@@ -29,8 +29,14 @@ class SessionCreateRequest(BaseModel):
     document_ids: Optional[List[str]] = Field(default_factory=list)
     initial_state: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
+class SessionUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    document_ids: Optional[List[str]] = None
+    state: Optional[Dict[str, Any]] = None
+
 class SessionRecord(BaseModel):
     id: str
+    session_id: Optional[str] = None
     app_name: str
     user_id: str
     title: str = "Legal Consultation"
@@ -40,6 +46,13 @@ class SessionRecord(BaseModel):
     state: Dict[str, Any] = Field(default_factory=dict)
     event_count: int = 0
     adk_synced: bool = False
+
+    def __init__(self, **data: Any):
+        if "id" in data and not data.get("session_id"):
+            data["session_id"] = data["id"]
+        elif "session_id" in data and not data.get("id"):
+            data["id"] = data["session_id"]
+        super().__init__(**data)
 
 # Query & Chat Models
 class QueryAgentRequest(BaseModel):

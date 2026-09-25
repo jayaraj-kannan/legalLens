@@ -46,6 +46,10 @@ class DatabaseProvider(ABC):
         pass
 
     @abstractmethod
+    async def update_session_title(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
+        pass
+
+    @abstractmethod
     async def log_session_event(self, session_id: str, event: Dict[str, Any]):
         pass
 
@@ -119,6 +123,20 @@ class FirestoreDatabaseProvider(DatabaseProvider):
                 "state": current_state,
                 "updated_at": now_iso()
             })
+
+    async def update_session_title(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
+        if not self.client:
+            return None
+        try:
+            doc_ref = self.client.collection("sessions").document(session_id)
+            doc_ref.update({
+                "title": title,
+                "updated_at": now_iso()
+            })
+            return await self.get_session(session_id)
+        except Exception as e:
+            logger.error(f"Error updating title for session {session_id} in Firestore: {e}")
+            return None
 
     async def log_session_event(self, session_id: str, event: Dict[str, Any]):
         if not self.client:
@@ -298,6 +316,14 @@ class SQLiteDatabaseProvider(DatabaseProvider):
             """, (json.dumps(curr_state), now_iso(), session_id))
             await db.commit()
 
+    async def update_session_title(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?
+            """, (title, now_iso(), session_id))
+            await db.commit()
+        return await self.get_session(session_id)
+
     async def log_session_event(self, session_id: str, event: Dict[str, Any]):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
@@ -384,6 +410,9 @@ class HybridDatabaseProvider(DatabaseProvider):
 
     async def update_session_state(self, session_id: str, state_delta: Dict[str, Any]):
         return await self.active_provider.update_session_state(session_id, state_delta)
+
+    async def update_session_title(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
+        return await self.active_provider.update_session_title(session_id, title)
 
     async def log_session_event(self, session_id: str, event: Dict[str, Any]):
         return await self.active_provider.log_session_event(session_id, event)

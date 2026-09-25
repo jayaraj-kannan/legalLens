@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: legallens-backend-pvc
+  namespace: legallens
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legallens-backend
+  namespace: legallens
+  labels:
+    app: legallens-backend
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legallens-backend
+  template:
+    metadata:
+      labels:
+        app: legallens-backend
+        tier: backend
+    spec:
+      containers:
+        - name: backend
+          image: legallens-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: legallens-config
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/key.json
+          volumeMounts:
+            - name: gcp-credentials-vol
+              mountPath: /etc/gcp
+              readOnly: true
+            - name: backend-storage
+              mountPath: /app/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: gcp-credentials-vol
+          secret:
+            secretName: gcp-credentials
+            optional: true
+        - name: backend-storage
+          persistentVolumeClaim:
+            claimName: legallens-backend-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legallens-backend
+  namespace: legallens
+  labels:
+    app: legallens-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: legallens-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http

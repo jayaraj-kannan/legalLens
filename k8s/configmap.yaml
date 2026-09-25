@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: legallens-config
+  namespace: legallens
+data:
+  GOOGLE_CLOUD_PROJECT: "legallens-509417"
+  GOOGLE_CLOUD_LOCATION: "us-south1"
+  GOOGLE_GENAI_USE_ENTERPRISE: "1"
+  GCS_BUCKET_NAME: "legallens-documents-509417"
+  DATABASE_TYPE: "firestore"
+  SQLITE_DB_URL: "sqlite+aiosqlite:////app/data/legallens.db"
+  DEFAULT_USER_ID: "legal_user_default"
+  ADK_SERVER_URL: "http://legallens-agent:8000"
+  ADK_APP_NAME: "legallens"
+  BACKEND_HOST: "legallens-backend"
+  BACKEND_PORT: "8080"

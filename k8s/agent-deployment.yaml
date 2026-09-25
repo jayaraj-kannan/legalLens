@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legallens-agent
+  namespace: legallens
+  labels:
+    app: legallens-agent
+    tier: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legallens-agent
+  template:
+    metadata:
+      labels:
+        app: legallens-agent
+        tier: agent
+    spec:
+      containers:
+        - name: agent
+          image: legallens-agent:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: legallens-config
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/key.json
+          volumeMounts:
+            - name: gcp-credentials-vol
+              mountPath: /etc/gcp
+              readOnly: true
+            - name: agent-storage
+              mountPath: /app/.adk
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: gcp-credentials-vol
+          secret:
+            secretName: gcp-credentials
+            optional: true
+        - name: agent-storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legallens-agent
+  namespace: legallens
+  labels:
+    app: legallens-agent
+spec:
+  type: ClusterIP
+  selector:
+    app: legallens-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http

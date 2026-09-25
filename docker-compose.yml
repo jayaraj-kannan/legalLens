@@ -1,0 +1,97 @@
+services:
+  # 1. Google ADK Multi-Agent Server
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: legallens-agent
+    restart: unless-stopped
+    ports:
+      - "${AGENT_PORT:-8000}:8000"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-legallens-509417}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-south1}
+      - GOOGLE_GENAI_USE_ENTERPRISE=${GOOGLE_GENAI_USE_ENTERPRISE:-1}
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/credentials.json
+    volumes:
+      - ${GCP_CREDENTIALS_PATH:-~/.config/gcloud/application_default_credentials.json}:/gcp/credentials.json:ro
+      - agent-data:/app/.adk
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - legallens-network
+
+  # 2. FastAPI Backend API Gateway
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: legallens-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      agent:
+        condition: service_healthy
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-legallens-509417}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-south1}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME:-legallens-documents-509417}
+      - DATABASE_TYPE=${DATABASE_TYPE:-firestore}
+      - SQLITE_DB_URL=sqlite+aiosqlite:////app/data/legallens.db
+      - ADK_SERVER_URL=http://agent:8000
+      - ADK_APP_NAME=legallens
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/credentials.json
+    volumes:
+      - ${GCP_CREDENTIALS_PATH:-~/.config/gcloud/application_default_credentials.json}:/gcp/credentials.json:ro
+      - backend-data:/app/data
+      - ./backend/app:/app/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - legallens-network
+
+  # 3. Vue 3 Frontend (Nginx Reverse Proxy)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: legallens-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8080
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - legallens-network
+
+volumes:
+  backend-data:
+    name: legallens-backend-data
+  agent-data:
+    name: legallens-agent-data
+
+networks:
+  legallens-network:
+    name: legallens-network
+    driver: bridge

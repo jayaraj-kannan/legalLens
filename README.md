@@ -256,6 +256,64 @@ legalLens/
 
 ---
 
+### 3. Run with Docker Compose 🐳
+
+Launch all 3 services (**Agent Engine**, **FastAPI Backend**, and **Vue 3 Frontend with Nginx Reverse Proxy**) with a single command:
+
+1. Copy `.env.example` to `.env` (or customize ports/settings):
+   ```bash
+   cp .env.example .env
+   ```
+2. Ensure you have authenticated GCP Application Default Credentials:
+   ```bash
+   gcloud auth application-default login
+   ```
+3. Start the entire containerized stack:
+   ```bash
+   docker compose up --build -d
+   ```
+   *(Or run `./scripts/run-docker.sh`)*
+
+4. Access the services:
+   - **Frontend UI**: [`http://localhost:3000`](http://localhost:3000)
+   - **Backend API Docs**: [`http://localhost:8080/docs`](http://localhost:8080/docs)
+   - **ADK Agent Health**: [`http://localhost:8000/health`](http://localhost:8000/health)
+
+5. View logs or stop the stack:
+   ```bash
+   docker compose logs -f
+   docker compose down
+   ```
+
+---
+
+### 4. Deploy to Kubernetes (K8s) ☸️
+
+Deploy the entire LegalLens multi-tier architecture to any Kubernetes cluster (Minikube, Kind, Docker Desktop, GKE, EKS, K3s):
+
+1. **Prerequisites**: `kubectl` connected to your cluster.
+2. **Apply all manifests** via Kustomize:
+   ```bash
+   kubectl apply -k k8s/
+   ```
+   *(Or run `./scripts/run-k8s.sh` for an automated build, image sideload, and rollout)*
+
+3. **Provide GCP Credentials** (if Vertex AI/GCS access is needed):
+   ```bash
+   kubectl create secret generic gcp-credentials \
+     --namespace legallens \
+     --from-file=key.json="${HOME}/.config/gcloud/application_default_credentials.json"
+   ```
+
+4. **Access the application**:
+   ```bash
+   # Port-forward the frontend Nginx service
+   kubectl port-forward svc/legallens-frontend 3000:80 -n legallens
+   ```
+   Open **`http://localhost:3000`** in your browser!
+
+---
+
 ## 📡 API Reference Overview
 
 | Method | Endpoint | Description |

@@ -1,7 +1,8 @@
 <script setup>
+import { ref, nextTick } from 'vue';
 import { 
   Plus, MessageSquare, Scale, Clock, ShieldAlert, 
-  FileText, LogOut, ChevronRight, User, Trash2
+  FileText, LogOut, ChevronRight, User, Trash2, Edit2, Check, X
 } from 'lucide-vue-next';
 
 defineProps({
@@ -11,7 +12,38 @@ defineProps({
   collapsed: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['select-session', 'new-chat', 'logout', 'delete-session']);
+const emit = defineEmits(['select-session', 'new-chat', 'logout', 'delete-session', 'rename-session']);
+
+// Inline Rename State
+const editingSessionId = ref('');
+const editingTitle = ref('');
+
+function startRename(sess, event) {
+  if (event) event.stopPropagation();
+  editingSessionId.value = sess.id;
+  editingTitle.value = sess.title || 'Legal Consultation';
+  nextTick(() => {
+    const input = document.getElementById(`rename-input-${sess.id}`);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  });
+}
+
+function saveRename(sessionId, event) {
+  if (event) event.stopPropagation();
+  const trimmed = editingTitle.value.trim();
+  if (trimmed) {
+    emit('rename-session', { id: sessionId, title: trimmed });
+  }
+  editingSessionId.value = '';
+}
+
+function cancelRename(event) {
+  if (event) event.stopPropagation();
+  editingSessionId.value = '';
+}
 </script>
 
 <template>
@@ -49,15 +81,47 @@ const emit = defineEmits(['select-session', 'new-chat', 'logout', 'delete-sessio
           v-for="sess in sessions" 
           :key="sess.id"
           class="history-item"
-          :class="{ active: sess.id === activeSessionId }"
+          :class="{ active: sess.id === activeSessionId, editing: editingSessionId === sess.id }"
           @click="emit('select-session', sess.id)"
         >
           <MessageSquare :size="16" class="item-icon" />
-          <div class="item-info">
-            <span class="item-title">{{ sess.title || 'Legal Consultation' }}</span>
+
+          <!-- Inline Edit Title Mode -->
+          <div v-if="editingSessionId === sess.id" class="rename-inline-wrap" @click.stop>
+            <input 
+              :id="`rename-input-${sess.id}`"
+              v-model="editingTitle"
+              class="rename-input"
+              type="text"
+              @keydown.enter="saveRename(sess.id, $event)"
+              @keydown.esc="cancelRename($event)"
+            />
+            <div class="rename-inline-actions">
+              <button type="button" class="btn-save-rename" title="Save Title" @click.stop="saveRename(sess.id, $event)">
+                <Check :size="13" />
+              </button>
+              <button type="button" class="btn-cancel-rename" title="Cancel" @click.stop="cancelRename($event)">
+                <X :size="13" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Standard Item Info Mode -->
+          <div v-else class="item-info" @dblclick="startRename(sess, $event)">
+            <span class="item-title" :title="sess.title || 'Legal Consultation'">{{ sess.title || 'Legal Consultation' }}</span>
             <span class="item-date">{{ sess.created_at ? new Date(sess.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Today' }}</span>
           </div>
-          <div class="item-actions">
+
+          <!-- Actions -->
+          <div v-if="editingSessionId !== sess.id" class="item-actions">
+            <button 
+              type="button"
+              class="btn-rename-session" 
+              title="Rename consultation title"
+              @click.stop="startRename(sess, $event)"
+            >
+              <Edit2 :size="13" />
+            </button>
             <button 
               type="button"
               class="btn-delete-session" 
@@ -278,6 +342,32 @@ const emit = defineEmits(['select-session', 'new-chat', 'logout', 'delete-sessio
   gap: 2px;
 }
 
+.btn-rename-session {
+  background: transparent;
+  border: none;
+  color: var(--text-sub);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.history-item:hover .btn-rename-session,
+.history-item.active .btn-rename-session {
+  opacity: 0.5;
+}
+
+.btn-rename-session:hover {
+  opacity: 1 !important;
+  color: var(--accent-gold);
+  background: rgba(229, 180, 88, 0.15);
+  transform: scale(1.1);
+}
+
 .btn-delete-session {
   background: transparent;
   border: none;
@@ -302,6 +392,60 @@ const emit = defineEmits(['select-session', 'new-chat', 'logout', 'delete-sessio
   color: #f87171;
   background: rgba(239, 68, 68, 0.15);
   transform: scale(1.1);
+}
+
+.rename-inline-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rename-input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-gold);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  padding: 3px 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.rename-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.btn-save-rename, .btn-cancel-rename {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.btn-save-rename {
+  color: var(--accent-success);
+}
+
+.btn-save-rename:hover {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.btn-cancel-rename {
+  color: var(--text-sub);
+}
+
+.btn-cancel-rename:hover {
+  color: var(--accent-danger);
+  background: rgba(244, 63, 94, 0.15);
 }
 
 .item-arrow {
