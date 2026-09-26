@@ -22,6 +22,7 @@ local_storage/
 
 # Environment & Credentials
 .env.local
+.env
 *credentials*.json
 
 # OS
