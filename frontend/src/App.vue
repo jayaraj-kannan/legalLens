@@ -287,7 +287,7 @@ async function handleDeleteSession(sessionId) {
 // 2. Handle File Upload & Dynamic Breakdown Extraction
 async function handleFileUpload(file) {
   analysisLoading.value = true;
-  showToast(`Uploading & analyzing ${file.name}...`);
+  showToast(`Uploading & extracting ${file.name}...`);
 
   try {
     const resp = await uploadDocument(file, currentUser.value.id, '', activeSessionId.value);
@@ -295,8 +295,42 @@ async function handleFileUpload(file) {
 
     attachedDocuments.value = [uploadedDoc];
     activeDocument.value = uploadedDoc;
-    activeAnalysis.value = uploadedDoc.custom_metadata?.analysis || null;
+    let analysis = uploadedDoc.custom_metadata?.analysis || null;
 
+    // Check if extraction/analysis is still pending or processing
+    const isPending = !analysis ||
+      analysis.is_pending ||
+      analysis.is_processing ||
+      analysis.metrics?.overall_risk_label === 'Analysis Pending' ||
+      analysis.legal_case?.straightforward_summary?.toLowerCase().includes('processing') ||
+      analysis.legal_case_summary?.plain_verdict?.toLowerCase().includes('processing');
+
+    if (isPending) {
+      showToast('Document uploaded. Extracting full text & analyzing clauses...', 'info');
+      // Actively wait for complete extraction and analysis to finish
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await new Promise(r => setTimeout(r, 1200 * attempt));
+        try {
+          const analyzeResp = await analyzeDocument(uploadedDoc.id);
+          if (analyzeResp && analyzeResp.analysis) {
+            const nextAnalysis = analyzeResp.analysis;
+            const stillPending = nextAnalysis.is_pending ||
+              nextAnalysis.is_processing ||
+              nextAnalysis.metrics?.overall_risk_label === 'Analysis Pending' ||
+              nextAnalysis.legal_case?.straightforward_summary?.toLowerCase().includes('processing') ||
+              nextAnalysis.legal_case_summary?.plain_verdict?.toLowerCase().includes('processing');
+            if (!stillPending) {
+              analysis = nextAnalysis;
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn('Extraction retry check notice:', e);
+        }
+      }
+    }
+
+    activeAnalysis.value = analysis;
     showToast(`Breakdown generated for "${file.name}"!`, 'success');
 
     // Auto-save dashboard breakdown state to consultation record

@@ -51,8 +51,15 @@ async def upload_document(
     from app.services.analysis_service import analysis_service
     analysis_data = await analysis_service.analyze_document(
         text=snippet or "",
-        filename=file.filename or "contract.pdf"
+        filename=file.filename or "contract.pdf",
+        raw_bytes=content,
+        mime_type=file.content_type or "application/pdf"
     )
+
+    if (not snippet or len(snippet.strip()) < 20) and analysis_data:
+        sum_text = analysis_data.get("legal_case", {}).get("straightforward_summary")
+        if sum_text and "processing" not in sum_text.lower():
+            snippet = f"Document: {file.filename}\nSummary: {sum_text}"
 
     # 4. Store document metadata with analysis in the database
     doc_id = str(uuid.uuid4())
@@ -148,12 +155,25 @@ async def analyze_document_endpoint(document_id: str):
 
     from app.services.analysis_service import analysis_service
     text = doc.get("extracted_text_snippet") or ""
-    if not text and doc.get("gcs_path"):
-        text = storage_service.read_file_text_sample(doc["gcs_path"]) or ""
-        doc["extracted_text_snippet"] = text
+    raw_bytes = None
+    if doc.get("gcs_path"):
+        raw_bytes = storage_service.get_file_bytes(doc["gcs_path"])
+        if not text:
+            text = storage_service.read_file_text_sample(doc["gcs_path"]) or ""
+            doc["extracted_text_snippet"] = text
 
-    analysis = await analysis_service.analyze_document(text, doc.get("original_filename", "contract.pdf"))
+    analysis = await analysis_service.analyze_document(
+        text=text,
+        filename=doc.get("original_filename", "contract.pdf"),
+        raw_bytes=raw_bytes,
+        mime_type=doc.get("content_type", "application/pdf")
+    )
     
+    if (not text or len(text.strip()) < 20) and analysis:
+        sum_text = analysis.get("legal_case", {}).get("straightforward_summary")
+        if sum_text and "processing" not in sum_text.lower():
+            doc["extracted_text_snippet"] = f"Document: {doc.get('original_filename')}\nSummary: {sum_text}"
+
     if not doc.get("custom_metadata"):
         doc["custom_metadata"] = {}
     doc["custom_metadata"]["analysis"] = analysis

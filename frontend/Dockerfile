@@ -22,7 +22,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Default backend connection variables (overridable in docker-compose / k8s)
-ENV BACKEND_HOST=backend \
+ENV BACKEND_URL=http://backend:8080 \
+    BACKEND_HOST=backend \
     BACKEND_PORT=8080
 
 EXPOSE 80

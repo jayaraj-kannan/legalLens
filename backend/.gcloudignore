@@ -1,0 +1,12 @@
+.git
+.gitignore
+.gcloudignore
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+data
+local_storage
+legallens.db
+legallens.db-journal
+*.log

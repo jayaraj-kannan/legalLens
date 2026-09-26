@@ -13,7 +13,13 @@ class LegalAnalysisService:
         self.project_id = settings.GOOGLE_CLOUD_PROJECT
         self.location = settings.GOOGLE_CLOUD_LOCATION
 
-    async def analyze_document(self, text: str, filename: str = "document.pdf") -> Dict[str, Any]:
+    async def analyze_document(
+        self,
+        text: str,
+        filename: str = "document.pdf",
+        raw_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Analyzes legal document text and extracts a structured breakdown dashboard payload:
         - nature_of_document
@@ -26,21 +32,36 @@ class LegalAnalysisService:
         - agreements_and_policies
         - lawyer_checklist
         - metrics
+        Supports multimodal vision extraction for scanned PDFs and image contracts when raw_bytes is provided.
         """
-        if not text or len(text.strip()) < 20:
+        has_text = bool(text and len(text.strip()) >= 20)
+        has_bytes = bool(raw_bytes and len(raw_bytes) > 0)
+
+        if not has_text and not has_bytes:
             return self._generate_empty_fallback(filename)
 
         # 1. Attempt deep analysis via Google GenAI / Vertex AI if available
-        ai_result = await self._analyze_with_ai(text, filename)
+        ai_result = await self._analyze_with_ai(text or "", filename, raw_bytes=raw_bytes, mime_type=mime_type)
         if ai_result:
+            ai_result["is_pending"] = False
             return ai_result
 
         # 2. Fall back to heuristic rule-based extractor
         logger.info("Using heuristic rule-based legal extraction fallback.")
-        return self._extract_heuristically(text, filename)
+        effective_text = text if has_text else f"Contract document: {filename}"
+        res = self._extract_heuristically(effective_text, filename)
+        res["is_pending"] = False
+        return res
 
-    async def _analyze_with_ai(self, text: str, filename: str) -> Optional[Dict[str, Any]]:
-        """Invokes Gemini 2.5 Flash via google-genai SDK or ADK with structured JSON instructions."""
+    async def _analyze_with_ai(
+        self,
+        text: str,
+        filename: str,
+        raw_bytes: Optional[bytes] = None,
+        mime_type: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Invokes Gemini 2.5 Flash via google-genai SDK or ADK with structured JSON instructions.
+        Supports multimodal document processing for scanned documents/images."""
         try:
             from google import genai
             from google.genai import types
@@ -55,9 +76,6 @@ class LegalAnalysisService:
 You are the LegalLens Chief Legal Analyst and Contract Specialist.
 Analyze the following legal document (filename: '{filename}') and output a comprehensive, structured JSON breakdown.
 Provide straightforward, crystal-clear answers in consumer-friendly plain English.
-
-DOCUMENT TEXT EXCERPT:
-{text[:22000]}
 
 REQUIRED JSON OUTPUT FORMAT (Strict valid JSON only, no markdown backticks, no markdown code block wrapper):
 {{
@@ -148,9 +166,20 @@ REQUIRED JSON OUTPUT FORMAT (Strict valid JSON only, no markdown backticks, no m
   }}
 }}
 """
+            if raw_bytes and (not text or len(text.strip()) < 20):
+                eff_mime = mime_type or ("application/pdf" if filename.lower().endswith(".pdf") else "image/jpeg")
+                contents = [
+                    types.Part.from_bytes(data=raw_bytes, mime_type=eff_mime),
+                    prompt
+                ]
+            else:
+                contents = [
+                    f"{prompt}\n\nDOCUMENT TEXT EXCERPT:\n{text[:22000]}"
+                ]
+
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.1
@@ -452,6 +481,8 @@ REQUIRED JSON OUTPUT FORMAT (Strict valid JSON only, no markdown backticks, no m
 
     def _generate_empty_fallback(self, filename: str) -> Dict[str, Any]:
         return {
+            "is_pending": True,
+            "is_processing": True,
             "nature_of_document": {
                 "title": filename,
                 "document_type": "Unspecified Legal Document",

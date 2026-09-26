@@ -89,6 +89,17 @@ function triggerFileInput() {
   document.getElementById('dash-file-input')?.click();
 }
 
+const isExtractingOrAnalyzing = computed(() => {
+  if (props.loading) return true;
+  if (!props.analysis || !props.document) return false;
+  // If analysis is in pending or processing extraction state, keep showing the loading state
+  if (props.analysis.is_pending || props.analysis.is_processing) return true;
+  if (props.analysis.metrics?.overall_risk_label === 'Analysis Pending') return true;
+  if (props.analysis.legal_case?.straightforward_summary?.toLowerCase().includes('processing')) return true;
+  if (props.analysis.legal_case_summary?.plain_verdict?.toLowerCase().includes('processing')) return true;
+  return false;
+});
+
 function onFileSelected(event) {
   const file = event.target.files?.[0];
   if (file) {
@@ -100,12 +111,43 @@ function onFileSelected(event) {
 
 <template>
   <div class="dashboard-container">
-    <!-- 1. LOADING STATE -->
-    <div v-if="loading" class="dash-loading-card fade-in">
+    <!-- 1. LOADING & EXTRACTION STATE -->
+    <div v-if="isExtractingOrAnalyzing" class="dash-loading-card fade-in">
       <div class="spinner-ring"></div>
       <div class="loading-text-group">
-        <h3>Analyzing Document Structure & Clauses...</h3>
-        <p>Google ADK specialist agents are cataloging obligations, detecting unilateral risks, and synthesizing plain-language answers.</p>
+        <div class="loading-doc-badge" v-if="props.document">
+          <FileText :size="15" />
+          <span>{{ props.document?.original_filename || 'Legal Document' }}</span>
+        </div>
+        <h3>Extracting Document & Analyzing Clauses...</h3>
+        <p>
+          Full text and scanned pages are being extracted. Google ADK specialist agents are cataloging obligations, detecting unilateral risks, and synthesizing plain-language answers.
+        </p>
+
+        <!-- Dynamic 3-stage progress indicator -->
+        <div class="loading-stepper">
+          <div class="step-badge done">
+            <CheckCircle2 :size="14" />
+            <span>Document Uploaded</span>
+          </div>
+          <div class="step-divider done"></div>
+          <div class="step-badge active">
+            <RefreshCw :size="14" class="spin-icon" />
+            <span>Full-Text & OCR Extraction</span>
+          </div>
+          <div class="step-divider"></div>
+          <div class="step-badge pending">
+            <Sparkles :size="14" />
+            <span>Multi-Agent Breakdown</span>
+          </div>
+        </div>
+
+        <div class="loading-actions">
+          <button class="btn-check-status" @click="emit('reanalyze')">
+            <RefreshCw :size="14" />
+            <span>Refresh Analysis Status</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -657,6 +699,98 @@ function onFileSelected(event) {
   font-size: 0.9rem;
   color: var(--text-muted);
   line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.loading-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(229, 180, 88, 0.12);
+  border: 1px solid rgba(229, 180, 88, 0.25);
+  color: var(--accent-gold);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.loading-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.step-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.step-badge.done {
+  background: rgba(46, 213, 115, 0.12);
+  border: 1px solid rgba(46, 213, 115, 0.25);
+  color: var(--accent-success);
+}
+
+.step-badge.active {
+  background: rgba(229, 180, 88, 0.15);
+  border: 1px solid rgba(229, 180, 88, 0.35);
+  color: var(--accent-gold);
+}
+
+.step-badge.pending {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.step-divider {
+  width: 20px;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.step-divider.done {
+  background: var(--accent-success);
+}
+
+.spin-icon {
+  animation: spin 1.2s linear infinite;
+}
+
+.loading-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.btn-check-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-check-status:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Empty Hero state */

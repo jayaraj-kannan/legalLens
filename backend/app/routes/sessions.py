@@ -261,11 +261,25 @@ async def analyze_session(session_id: str):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     text = doc.get("extracted_text_snippet") or ""
-    if not text and doc.get("gcs_path"):
-        text = storage_service.read_file_text_sample(doc["gcs_path"]) or ""
-        doc["extracted_text_snippet"] = text
+    raw_bytes = None
+    if doc.get("gcs_path"):
+        raw_bytes = storage_service.get_file_bytes(doc["gcs_path"])
+        if not text:
+            text = storage_service.read_file_text_sample(doc["gcs_path"]) or ""
+            doc["extracted_text_snippet"] = text
 
-    analysis = await analysis_service.analyze_document(text, doc.get("original_filename", "document.pdf"))
+    analysis = await analysis_service.analyze_document(
+        text=text,
+        filename=doc.get("original_filename", "document.pdf"),
+        raw_bytes=raw_bytes,
+        mime_type=doc.get("content_type", "application/pdf")
+    )
+
+    if (not text or len(text.strip()) < 20) and analysis:
+        sum_text = analysis.get("legal_case", {}).get("straightforward_summary")
+        if sum_text and "processing" not in sum_text.lower():
+            doc["extracted_text_snippet"] = f"Document: {doc.get('original_filename')}\nSummary: {sum_text}"
+
     if not doc.get("custom_metadata"):
         doc["custom_metadata"] = {}
     doc["custom_metadata"]["analysis"] = analysis

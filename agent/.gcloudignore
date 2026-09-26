@@ -1,0 +1,11 @@
+.git
+.gitignore
+.gcloudignore
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.adk
+legallens.db
+legallens.db-journal
+*.log

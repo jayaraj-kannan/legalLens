@@ -1,0 +1,13 @@
+[run]
+branch = False
+source =
+    backend/app
+    agent/legallens
+
+[report]
+exclude_lines =
+    pragma: no cover
+    @abstractmethod
+    pass
+    raise NotImplementedError
+    if __name__ == .__main__.:

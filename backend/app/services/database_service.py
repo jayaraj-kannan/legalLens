@@ -118,6 +118,8 @@ class FirestoreDatabaseProvider(DatabaseProvider):
         doc = doc_ref.get()
         if doc.exists:
             current_state = doc.to_dict().get("state", {})
+            if not isinstance(current_state, dict):
+                current_state = {}
             current_state.update(state_delta)
             doc_ref.update({
                 "state": current_state,
@@ -309,6 +311,8 @@ class SQLiteDatabaseProvider(DatabaseProvider):
         if not curr:
             return
         curr_state = curr.get("state", {})
+        if not isinstance(curr_state, dict):
+            curr_state = {}
         curr_state.update(state_delta)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""

@@ -1,0 +1,13 @@
+.git
+.gitignore
+.gcloudignore
+node_modules
+dist
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.adk
+legallens.db
+legallens.db-journal
+*.log

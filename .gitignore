@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Local Storage & Database artifacts
+local_storage/
+*.db
+*.sqlite3
+
+# Environment & Credentials
+.env.local
+*credentials*.json
+
+# OS
+.DS_Store
+Thumbs.db

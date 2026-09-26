@@ -76,31 +76,64 @@ class StorageService:
         local_uri = f"file://{local_filepath}"
         return local_uri, local_filepath
 
-    def read_file_text_sample(self, gcs_path: str, max_chars: int = 25000) -> Optional[str]:
-        """
-        Extracts clean, readable document text content from GCS or local disk.
-        Supports:
-        - PDF documents (via pypdf)
-        - Microsoft Word (.docx) documents (via OpenXML / zipfile)
-        - RTF documents
-        - Plain text / Markdown / HTML
-        Guarantees that raw binary archives (PK-compressed files) are NEVER decoded as raw junk text.
-        """
-        raw_bytes = None
+    def get_file_bytes(self, gcs_path: str) -> Optional[bytes]:
+        """Reads raw document bytes from GCS or local disk."""
+        if not gcs_path:
+            return None
         if self.client and not gcs_path.startswith("/"):
             try:
                 bucket = self.client.bucket(self.bucket_name)
                 blob = bucket.blob(gcs_path)
-                raw_bytes = blob.download_as_bytes()
+                return blob.download_as_bytes()
             except Exception as e:
                 logger.warning(f"Could not download file from GCS: {e}")
         elif os.path.exists(gcs_path):
             try:
                 with open(gcs_path, "rb") as f:
-                    raw_bytes = f.read()
+                    return f.read()
             except Exception as e:
                 logger.warning(f"Could not read local file: {e}")
+        return None
 
+    def _extract_text_via_gemini_multimodal(self, raw_bytes: bytes, mime_type: str) -> Optional[str]:
+        """Extracts text from scanned PDFs or images via Gemini 2.5 Flash multimodal vision."""
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=settings.GOOGLE_CLOUD_LOCATION
+            )
+            prompt = (
+                "Extract and transcribe all text, headings, sections, party names, terms, "
+                "dates, and clauses from this document clearly and comprehensively."
+            )
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
+                    prompt
+                ]
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            logger.warning(f"Gemini multimodal OCR extraction failed or unavailable: {e}")
+        return None
+
+    def read_file_text_sample(self, gcs_path: str, max_chars: int = 25000) -> Optional[str]:
+        """
+        Extracts clean, readable document text content from GCS or local disk.
+        Supports:
+        - PDF documents (via pypdf + Gemini multimodal OCR fallback for scanned PDFs)
+        - Image documents (PNG, JPEG, WebP) via Gemini multimodal OCR
+        - Microsoft Word (.docx) documents (via OpenXML / zipfile)
+        - RTF documents
+        - Plain text / Markdown / HTML
+        Guarantees that raw binary archives (PK-compressed files) are NEVER decoded as raw junk text.
+        """
+        raw_bytes = self.get_file_bytes(gcs_path)
         if not raw_bytes:
             return None
 
@@ -120,6 +153,18 @@ class StorageService:
                     return extracted[:max_chars]
             except Exception as ex:
                 logger.error(f"Error parsing PDF content: {ex}")
+
+            # Fallback for scanned PDF: Multimodal OCR via Gemini
+            ocr_text = self._extract_text_via_gemini_multimodal(raw_bytes, "application/pdf")
+            if ocr_text:
+                return ocr_text[:max_chars]
+
+        # 2. Check for image files (PNG, JPEG, WebP)
+        if raw_bytes.startswith(b"\x89PNG") or raw_bytes.startswith(b"\xff\xd8\xff") or raw_bytes.startswith(b"RIFF"):
+            mime = "image/png" if raw_bytes.startswith(b"\x89PNG") else "image/jpeg"
+            ocr_text = self._extract_text_via_gemini_multimodal(raw_bytes, mime)
+            if ocr_text:
+                return ocr_text[:max_chars]
 
         # 2. Check if Microsoft Word (.docx) document (PK-compressed zip archive)
         if raw_bytes.startswith(b"PK\x03\x04"):
